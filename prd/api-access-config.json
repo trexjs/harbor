@@ -1,0 +1,243 @@
+{
+    "apiAccess": {
+        "public": {
+            "description": "APIs that can be accessed without authentication",
+            "endpoints": [
+                {
+                    "path": "/api/auth/register",
+                    "methods": [
+                        "POST"
+                    ],
+                    "description": "User registration"
+                },
+                {
+                    "path": "/api/auth/login",
+                    "methods": [
+                        "POST"
+                    ],
+                    "description": "User login"
+                },
+                {
+                    "path": "/api/auth/verify-email",
+                    "methods": [
+                        "POST"
+                    ],
+                    "description": "Email verification"
+                },
+                {
+                    "path": "/api/auth/forgot-password",
+                    "methods": [
+                        "POST"
+                    ],
+                    "description": "Forgot password request"
+                },
+                {
+                    "path": "/api/auth/reset-password",
+                    "methods": [
+                        "POST"
+                    ],
+                    "description": "Reset password with OTP"
+                },
+                {
+                    "path": "/api/auth/refresh-token",
+                    "methods": [
+                        "POST"
+                    ],
+                    "description": "Refresh access token"
+                },
+                {
+                    "path": "/api/auth/health",
+                    "methods": [
+                        "GET"
+                    ],
+                    "description": "Health check"
+                }
+            ]
+        },
+        "protected": {
+            "description": "APIs that require authentication",
+            "endpoints": [
+                {
+                    "path": "/api/auth/logout",
+                    "methods": [
+                        "POST"
+                    ],
+                    "description": "User logout",
+                    "requiredAuth": true
+                },
+                {
+                    "path": "/api/auth/profile",
+                    "methods": [
+                        "GET"
+                    ],
+                    "description": "Get user profile",
+                    "requiredAuth": true
+                },
+                {
+                    "path": "/api/auth/generate-otp-password-change",
+                    "methods": [
+                        "POST"
+                    ],
+                    "description": "Generate OTP for password change",
+                    "requiredAuth": true
+                },
+                {
+                    "path": "/api/auth/change-password",
+                    "methods": [
+                        "POST"
+                    ],
+                    "description": "Change password with OTP",
+                    "requiredAuth": true
+                }
+            ]
+        },
+        "roleBased": {
+            "description": "APIs with role-based access control",
+            "endpoints": [
+                {
+                    "path": "/api/teacher/*",
+                    "methods": [
+                        "GET",
+                        "POST",
+                        "PUT",
+                        "DELETE"
+                    ],
+                    "description": "Teacher management APIs",
+                    "requiredAuth": true,
+                    "allowedRoles": [
+                        "teacher",
+                        "admin"
+                    ],
+                    "middleware": [
+                        "authenticateToken",
+                        "requireUserType"
+                    ]
+                },
+                {
+                    "path": "/api/students/*",
+                    "methods": [
+                        "GET",
+                        "POST",
+                        "PUT",
+                        "DELETE"
+                    ],
+                    "description": "Student management APIs",
+                    "requiredAuth": true,
+                    "allowedRoles": [
+                        "teacher",
+                        "admin"
+                    ],
+                    "middleware": [
+                        "authenticateToken",
+                        "requireUserType"
+                    ]
+                },
+                {
+                    "path": "/api/attendance/*",
+                    "methods": [
+                        "GET",
+                        "POST",
+                        "PUT",
+                        "DELETE"
+                    ],
+                    "description": "Attendance management APIs",
+                    "requiredAuth": true,
+                    "allowedRoles": [
+                        "teacher",
+                        "admin",
+                        "student"
+                    ],
+                    "middleware": [
+                        "authenticateToken",
+                        "requireUserType"
+                    ]
+                },
+                {
+                    "path": "/api/schools/*",
+                    "methods": [
+                        "GET",
+                        "POST",
+                        "PUT",
+                        "DELETE"
+                    ],
+                    "description": "School management APIs",
+                    "requiredAuth": true,
+                    "allowedRoles": [
+                        "admin"
+                    ],
+                    "middleware": [
+                        "authenticateToken",
+                        "requireUserType"
+                    ]
+                }
+            ]
+        }
+    },
+    "security": {
+        "passwordPolicy": {
+            "minLength": 6,
+            "allowedCharacters": "letters, numbers, and special characters: _, @, #, $, %",
+            "description": "Password must be at least 6 characters and contain only allowed characters"
+        },
+        "jwt": {
+            "accessTokenExpiry": "1h",
+            "refreshTokenExpiry": "7d",
+            "algorithm": "HS256"
+        },
+        "otp": {
+            "expiry": "10 minutes",
+            "length": 6,
+            "type": "numeric"
+        },
+        "accountLockout": {
+            "maxAttempts": 5,
+            "lockoutDuration": "2 hours"
+        },
+        "emailVerification": {
+            "required": true,
+            "tokenExpiry": "24 hours"
+        }
+    },
+    "rateLimiting": {
+        "login": {
+            "maxAttempts": 5,
+            "windowMs": 900000,
+            "description": "5 attempts per 15 minutes"
+        },
+        "passwordReset": {
+            "maxAttempts": 3,
+            "windowMs": 3600000,
+            "description": "3 attempts per hour"
+        },
+        "general": {
+            "maxRequests": 100,
+            "windowMs": 900000,
+            "description": "100 requests per 15 minutes"
+        }
+    },
+    "cors": {
+        "enabled": true,
+        "allowedOrigins": [
+            "http://localhost:3000",
+            "http://localhost:3001",
+            "https://yourdomain.com"
+        ],
+        "allowedMethods": [
+            "GET",
+            "POST",
+            "PUT",
+            "DELETE",
+            "OPTIONS"
+        ],
+        "allowedHeaders": [
+            "Content-Type",
+            "Authorization"
+        ]
+    },
+    "logging": {
+        "enabled": true,
+        "level": "info",
+        "logAuthAttempts": true,
+        "logFailedAttempts": true
+    }
+}

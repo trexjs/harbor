@@ -1,0 +1,137 @@
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const compression = require('compression');
+const morgan = require('morgan');
+const connectDB = require('./src/config/database');
+const { connectRedis } = require('./src/config/redis');
+const logger = require('./src/utils/logger');
+const correlationIdMiddleware = require('./src/middleware/correlationId');
+const requestLoggerMiddleware = require('./src/middleware/requestLogger');
+
+// Routes
+const gatewayRoutes = require('./src/routes/gateway');
+const adminRoutes = require('./src/routes/admin');
+
+const app = express();
+
+// Security middleware
+app.use(helmet());
+app.use(compression());
+
+// CORS configuration
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || '*',
+  methods: process.env.CORS_METHODS?.split(',') || ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true,
+}));
+
+// Body parsing middleware
+app.use(express.json({ limit: process.env.MAX_REQUEST_SIZE || '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: process.env.MAX_REQUEST_SIZE || '10mb' }));
+
+// Correlation ID middleware (must be before request logger)
+app.use(correlationIdMiddleware);
+
+// Request logging
+app.use(requestLoggerMiddleware);
+
+// Morgan HTTP logging
+app.use(morgan('combined', {
+  stream: {
+    write: (message) => logger.info(message.trim()),
+  },
+}));
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    correlationId: req.correlationId,
+  });
+});
+
+// Metrics endpoint (enhanced implementation)
+const metricsService = require('./src/services/metricsService');
+
+app.get('/metrics', async (req, res) => {
+  try {
+    const format = req.query.format || 'json';
+    
+    if (format === 'prometheus') {
+      const prometheusMetrics = await metricsService.getPrometheusMetrics();
+      res.set('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+      res.send(prometheusMetrics);
+    } else {
+      const jsonMetrics = await metricsService.getJsonMetrics();
+      res.json(jsonMetrics);
+    }
+  } catch (error) {
+    logger.error('Metrics endpoint error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to retrieve metrics',
+      correlationId: req.correlationId,
+    });
+  }
+});
+
+// Gateway routes
+app.use('/', gatewayRoutes);
+
+// Admin API routes
+app.use('/api/admin', adminRoutes);
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({
+    error: 'Not Found',
+    message: `Route ${req.method} ${req.path} not found`,
+    correlationId: req.correlationId,
+  });
+});
+
+// Error handler
+app.use((err, req, res, next) => {
+  logger.error('Error:', {
+    error: err.message,
+    stack: err.stack,
+    correlationId: req.correlationId,
+  });
+
+  res.status(err.status || 500).json({
+    error: 'Internal Server Error',
+    message: process.env.NODE_ENV === 'development' ? err.message : 'An error occurred',
+    correlationId: req.correlationId,
+  });
+});
+
+// const PORT = process.env.PORT || 8080;
+const PORT = 8080;
+
+// Start server
+const startServer = async () => {
+  try {
+    // Connect to MongoDB
+    await connectDB();
+
+    // Connect to Redis (optional)
+    // await connectRedis();
+
+    // Start server
+    app.listen(PORT, () => {
+      logger.info(`API Gateway running on port ${PORT}`);
+      logger.info(`Environment: ${process.env.NODE_ENV}`);
+    });
+  } catch (error) {
+    logger.error('Failed to start server:', error);
+    process.exit(1);
+  }
+};
+
+startServer();
+
+module.exports = app;
