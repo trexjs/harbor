@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { PlusIcon, EditIcon, DeleteIcon, SearchIcon } from '../components/icons';
+import { PlusIcon, EditIcon, DeleteIcon } from '../components/icons';
 import { apiClient } from '../services/api';
+import SearchBar from '../components/SearchBar';
+import TerminationRuleModal from '../components/TerminationRuleModal';
 
 const TerminationRulesContainer = styled.div`
   display: flex;
@@ -47,27 +49,6 @@ const AddButton = styled.button`
   }
 `;
 
-const SearchBar = styled.div`
-  display: flex;
-  align-items: center;
-  gap: ${({ theme }) => theme.spacing.md};
-  margin-bottom: ${({ theme }) => theme.spacing.lg};
-`;
-
-const SearchInput = styled.input`
-  flex: 1;
-  padding: ${({ theme }) => theme.spacing.md};
-  border: 1px solid ${({ theme }) => theme.colors.border};
-  border-radius: ${({ theme }) => theme.borderRadius.md};
-  font-size: ${({ theme }) => theme.fontSize.sm};
-  background: ${({ theme }) => theme.colors.surface};
-
-  &:focus {
-    outline: none;
-    border-color: ${({ theme }) => theme.colors.primary};
-  }
-`;
-
 const TerminationRulesTable = styled.div`
   background: ${({ theme }) => theme.colors.surface};
   border: 1px solid ${({ theme }) => theme.colors.border};
@@ -77,7 +58,7 @@ const TerminationRulesTable = styled.div`
 
 const TableHeader = styled.div`
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr 1fr auto;
+  grid-template-columns: 1.2fr 1fr 1fr 1fr 1fr auto;
   gap: ${({ theme }) => theme.spacing.md};
   padding: ${({ theme }) => theme.spacing.lg};
   background: ${({ theme }) => theme.colors.borderLight};
@@ -88,7 +69,7 @@ const TableHeader = styled.div`
 
 const TableRow = styled.div`
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr 1fr auto;
+  grid-template-columns: 1.2fr 1fr 1fr 1fr 1fr auto;
   gap: ${({ theme }) => theme.spacing.md};
   padding: ${({ theme }) => theme.spacing.lg};
   border-bottom: 1px solid ${({ theme }) => theme.colors.border};
@@ -161,6 +142,11 @@ const DeleteButton = styled(ActionButton)`
 
 interface TerminationRule {
   _id: string;
+  routeId: {
+    _id: string;
+    name: string;
+    path: string;
+  } | string;
   priority: number;
   conditions: Array<{
     field: string;
@@ -169,29 +155,62 @@ interface TerminationRule {
   }>;
   action: 'terminate' | 'redirect' | 'transform';
   responseCode: number;
+  responseBody?: string;
+  redirectUrl?: string;
+  logReason?: boolean;
   active: boolean;
   createdAt: string;
+}
+
+interface RouteOption {
+  _id: string;
+  name: string;
+  path: string;
 }
 
 const TerminationRules: React.FC = () => {
   const [terminationRules, setTerminationRules] = useState<TerminationRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingRule, setEditingRule] = useState<TerminationRule | null>(null);
+  const [routes, setRoutes] = useState<RouteOption[]>([]);
 
   useEffect(() => {
-    const fetchTerminationRules = async () => {
+    const init = async () => {
       try {
-        const response = await apiClient.get('/termination-rules');
-        setTerminationRules(response.data);
-      } catch (error) {
-        console.error('Failed to fetch termination rules:', error);
+        await Promise.all([fetchTerminationRules(), fetchRoutes()]);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchTerminationRules();
+    init();
   }, []);
+
+  const fetchTerminationRules = async () => {
+    try {
+      const response = await apiClient.get('/termination-rules');
+      setTerminationRules(response.data.data || []);
+    } catch (error) {
+      console.error('Failed to fetch termination rules:', error);
+    }
+  };
+
+  const fetchRoutes = async () => {
+    try {
+      const response = await apiClient.get('/routes');
+      const data = response.data?.data || [];
+      const options: RouteOption[] = data.map((route: any) => ({
+        _id: route._id,
+        name: route.name,
+        path: route.path,
+      }));
+      setRoutes(options);
+    } catch (error) {
+      console.error('Failed to fetch routes:', error);
+    }
+  };
 
   const filteredTerminationRules = terminationRules.filter(rule =>
     rule.conditions.some(condition => 
@@ -199,6 +218,30 @@ const TerminationRules: React.FC = () => {
       condition.value.toLowerCase().includes(searchTerm.toLowerCase())
     )
   );
+
+  const handleCreate = () => {
+    setEditingRule(null);
+    setIsModalOpen(true);
+  };
+
+  const handleEdit = (rule: TerminationRule) => {
+    setEditingRule(rule);
+    setIsModalOpen(true);
+  };
+
+  const handleSubmit = async (data: any) => {
+    try {
+      if (editingRule) {
+        await apiClient.put(`/termination-rules/${editingRule._id}`, data);
+      } else {
+        await apiClient.post('/termination-rules', data);
+      }
+      await fetchTerminationRules();
+      setIsModalOpen(false);
+    } catch (error: any) {
+      throw error;
+    }
+  };
 
   const handleDelete = async (ruleId: string) => {
     if (window.confirm('Are you sure you want to delete this termination rule?')) {
@@ -219,24 +262,44 @@ const TerminationRules: React.FC = () => {
     <TerminationRulesContainer>
       <PageHeader>
         <PageTitle>Termination Rules</PageTitle>
-        <AddButton>
+        <AddButton onClick={handleCreate}>
           <PlusIcon />
           Add Termination Rule
         </AddButton>
       </PageHeader>
 
-      <SearchBar>
-        <SearchInput
-          type="text"
-          placeholder="Search termination rules..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-        <SearchIcon />
-      </SearchBar>
+      <TerminationRuleModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSubmit={handleSubmit}
+        initialData={editingRule ? {
+          routeId: typeof editingRule.routeId === 'string' ? editingRule.routeId : editingRule.routeId._id,
+          priority: editingRule.priority,
+          conditions: editingRule.conditions.map(condition => ({
+            field: condition.field as any,
+            operator: condition.operator as any,
+            value: condition.value,
+            headerName: condition.field === 'header' ? condition.value : undefined,
+          })),
+          action: editingRule.action,
+          responseCode: editingRule.responseCode,
+          responseBody: editingRule.responseBody || '',
+          redirectUrl: editingRule.redirectUrl || '',
+          logReason: editingRule.logReason ?? true,
+          active: editingRule.active,
+        } : undefined}
+        routes={routes}
+      />
+
+      <SearchBar
+        value={searchTerm}
+        onChange={setSearchTerm}
+        placeholder="Search termination rules..."
+      />
 
       <TerminationRulesTable>
         <TableHeader>
+          <div>Route</div>
           <div>Priority</div>
           <div>Action</div>
           <div>Conditions</div>
@@ -247,6 +310,11 @@ const TerminationRules: React.FC = () => {
 
         {filteredTerminationRules.map((rule) => (
           <TableRow key={rule._id}>
+            <div>
+              {typeof rule.routeId === 'string'
+                ? routes.find(route => route._id === rule.routeId)?.name || '—'
+                : rule.routeId?.name || '—'}
+            </div>
             <div>{rule.priority}</div>
             <ActionBadge action={rule.action}>
               {rule.action}
@@ -255,7 +323,7 @@ const TerminationRules: React.FC = () => {
             <div>{rule.responseCode}</div>
             <div>{rule.active ? 'Active' : 'Inactive'}</div>
             <ActionButtons>
-              <ActionButton title="Edit">
+              <ActionButton title="Edit" onClick={() => handleEdit(rule)}>
                 <EditIcon />
               </ActionButton>
               <DeleteButton 

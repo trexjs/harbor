@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { PlusIcon, EditIcon, DeleteIcon, SearchIcon } from '../components/icons';
+import { PlusIcon, EditIcon, DeleteIcon } from '../components/icons';
 import { apiClient } from '../services/api';
+import SearchBar from '../components/SearchBar';
+import ConsumerModal from '../components/ConsumerModal';
 
 const ConsumersContainer = styled.div`
   display: flex;
@@ -44,27 +46,6 @@ const AddButton = styled.button`
   svg {
     width: 16px;
     height: 16px;
-  }
-`;
-
-const SearchBar = styled.div`
-  display: flex;
-  align-items: center;
-  gap: ${({ theme }) => theme.spacing.md};
-  margin-bottom: ${({ theme }) => theme.spacing.lg};
-`;
-
-const SearchInput = styled.input`
-  flex: 1;
-  padding: ${({ theme }) => theme.spacing.md};
-  border: 1px solid ${({ theme }) => theme.colors.border};
-  border-radius: ${({ theme }) => theme.borderRadius.md};
-  font-size: ${({ theme }) => theme.fontSize.sm};
-  background: ${({ theme }) => theme.colors.surface};
-
-  &:focus {
-    outline: none;
-    border-color: ${({ theme }) => theme.colors.primary};
   }
 `;
 
@@ -143,24 +124,37 @@ const DeleteButton = styled(ActionButton)`
 
 interface Consumer {
   _id: string;
-  username: string;
+  name: string;
+  email: string;
   customId?: string;
   tags?: string[];
   createdAt: string;
 }
 
+const EmptyState = styled.div`
+  padding: ${({ theme }) => theme.spacing.xxl};
+  text-align: center;
+  color: ${({ theme }) => theme.colors.textSecondary};
+`;
+
 const Consumers: React.FC = () => {
   const [consumers, setConsumers] = useState<Consumer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingConsumer, setEditingConsumer] = useState<Consumer | null>(null);
+  const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
 
   useEffect(() => {
     const fetchConsumers = async () => {
       try {
         const response = await apiClient.get('/consumers');
-        setConsumers(response.data);
-      } catch (error) {
+        // API returns { data: consumers, pagination: {...} }
+        setConsumers(response.data.data || []);
+      } catch (error: any) {
         console.error('Failed to fetch consumers:', error);
+        setError(error.response?.data?.message || 'Failed to load consumers');
       } finally {
         setLoading(false);
       }
@@ -170,9 +164,66 @@ const Consumers: React.FC = () => {
   }, []);
 
   const filteredConsumers = consumers.filter(consumer =>
-    consumer.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    consumer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    consumer.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (consumer.customId && consumer.customId.toLowerCase().includes(searchTerm.toLowerCase()))
   );
+
+  const fetchConsumers = async () => {
+    try {
+      const response = await apiClient.get('/consumers');
+      setConsumers(response.data.data || []);
+    } catch (error) {
+      console.error('Failed to fetch consumers:', error);
+    }
+  };
+
+  const handleCreate = () => {
+    setEditingConsumer(null);
+    setModalMode('create');
+    setIsModalOpen(true);
+  };
+
+  const handleEdit = (consumer: Consumer) => {
+    setEditingConsumer(consumer);
+    setModalMode('edit');
+    setIsModalOpen(true);
+  };
+
+  const getModalData = () => {
+    if (!editingConsumer) return undefined;
+    return {
+      name: editingConsumer.name,
+      email: editingConsumer.email,
+      customId: editingConsumer.customId,
+      tags: editingConsumer.tags?.join(', ') || '',
+    };
+  };
+
+  const handleSubmit = async (data: any) => {
+    try {
+      const payload = {
+        name: data.name,
+        email: data.email,
+        customId: data.customId || undefined,
+        tags: data.tags
+          ? data.tags
+              .split(',')
+              .map((tag: string) => tag.trim())
+              .filter((tag: string) => tag.length > 0)
+          : [],
+      };
+      if (modalMode === 'create') {
+        await apiClient.post('/consumers', payload);
+      } else if (editingConsumer) {
+        await apiClient.put(`/consumers/${editingConsumer._id}`, payload);
+      }
+      await fetchConsumers();
+      setIsModalOpen(false);
+    } catch (error: any) {
+      throw error;
+    }
+  };
 
   const handleDelete = async (consumerId: string) => {
     if (window.confirm('Are you sure you want to delete this consumer?')) {
@@ -181,6 +232,7 @@ const Consumers: React.FC = () => {
         setConsumers(consumers.filter(consumer => consumer._id !== consumerId));
       } catch (error) {
         console.error('Failed to delete consumer:', error);
+        alert('Failed to delete consumer');
       }
     }
   };
@@ -189,54 +241,70 @@ const Consumers: React.FC = () => {
     return <div>Loading consumers...</div>;
   }
 
+  if (error) {
+    return <div style={{ color: 'red' }}>Error: {error}</div>;
+  }
+
   return (
     <ConsumersContainer>
       <PageHeader>
         <PageTitle>Consumers</PageTitle>
-        <AddButton>
+        <AddButton onClick={handleCreate}>
           <PlusIcon />
           Add Consumer
         </AddButton>
       </PageHeader>
 
-      <SearchBar>
-        <SearchInput
-          type="text"
-          placeholder="Search consumers..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-        <SearchIcon />
-      </SearchBar>
+      <ConsumerModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSubmit={handleSubmit}
+        initialData={getModalData()}
+        mode={modalMode}
+      />
+
+      <SearchBar
+        value={searchTerm}
+        onChange={setSearchTerm}
+        placeholder="Search consumers..."
+      />
 
       <ConsumersTable>
         <TableHeader>
-          <div>Username</div>
+          <div>Name</div>
+          <div>Email</div>
           <div>Custom ID</div>
           <div>Tags</div>
           <div>Created</div>
           <div>Actions</div>
         </TableHeader>
 
-        {filteredConsumers.map((consumer) => (
-          <TableRow key={consumer._id}>
-            <ConsumerName>{consumer.username}</ConsumerName>
-            <div>{consumer.customId || '-'}</div>
-            <div>{consumer.tags?.join(', ') || '-'}</div>
-            <div>{new Date(consumer.createdAt).toLocaleDateString()}</div>
-            <ActionButtons>
-              <ActionButton title="Edit">
-                <EditIcon />
-              </ActionButton>
-              <DeleteButton 
-                title="Delete"
-                onClick={() => handleDelete(consumer._id)}
-              >
-                <DeleteIcon />
-              </DeleteButton>
-            </ActionButtons>
-          </TableRow>
-        ))}
+        {filteredConsumers.length === 0 ? (
+          <EmptyState>
+            {searchTerm ? 'No consumers found matching your search.' : 'No consumers yet. Click "Add Consumer" to create one.'}
+          </EmptyState>
+        ) : (
+          filteredConsumers.map((consumer) => (
+            <TableRow key={consumer._id}>
+              <ConsumerName>{consumer.name}</ConsumerName>
+              <div>{consumer.email}</div>
+              <div>{consumer.customId || '-'}</div>
+              <div>{consumer.tags?.join(', ') || '-'}</div>
+              <div>{new Date(consumer.createdAt).toLocaleDateString()}</div>
+              <ActionButtons>
+                <ActionButton title="Edit" onClick={() => handleEdit(consumer)}>
+                  <EditIcon />
+                </ActionButton>
+                <DeleteButton 
+                  title="Delete"
+                  onClick={() => handleDelete(consumer._id)}
+                >
+                  <DeleteIcon />
+                </DeleteButton>
+              </ActionButtons>
+            </TableRow>
+          ))
+        )}
       </ConsumersTable>
     </ConsumersContainer>
   );

@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { PlusIcon, EditIcon, DeleteIcon, SearchIcon } from '../components/icons';
+import { PlusIcon, EditIcon, DeleteIcon } from '../components/icons';
 import { apiClient } from '../services/api';
+import SearchBar from '../components/SearchBar';
+import IpRuleModal from '../components/IpRuleModal';
 
 const IpRulesContainer = styled.div`
   display: flex;
@@ -44,27 +46,6 @@ const AddButton = styled.button`
   svg {
     width: 16px;
     height: 16px;
-  }
-`;
-
-const SearchBar = styled.div`
-  display: flex;
-  align-items: center;
-  gap: ${({ theme }) => theme.spacing.md};
-  margin-bottom: ${({ theme }) => theme.spacing.lg};
-`;
-
-const SearchInput = styled.input`
-  flex: 1;
-  padding: ${({ theme }) => theme.spacing.md};
-  border: 1px solid ${({ theme }) => theme.colors.border};
-  border-radius: ${({ theme }) => theme.borderRadius.md};
-  font-size: ${({ theme }) => theme.fontSize.sm};
-  background: ${({ theme }) => theme.colors.surface};
-
-  &:focus {
-    outline: none;
-    border-color: ${({ theme }) => theme.colors.primary};
   }
 `;
 
@@ -145,6 +126,13 @@ const DeleteButton = styled(ActionButton)`
   }
 `;
 
+const EmptyState = styled.div`
+  padding: ${({ theme }) => theme.spacing.xxl};
+  text-align: center;
+  color: ${({ theme }) => theme.colors.textSecondary};
+  font-size: ${({ theme }) => theme.fontSize.sm};
+`;
+
 interface IpRule {
   _id: string;
   type: 'blacklist' | 'whitelist';
@@ -158,12 +146,15 @@ const IpRules: React.FC = () => {
   const [ipRules, setIpRules] = useState<IpRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingRule, setEditingRule] = useState<IpRule | null>(null);
+  const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
 
   useEffect(() => {
     const fetchIpRules = async () => {
       try {
         const response = await apiClient.get('/ip-rules');
-        setIpRules(response.data);
+        setIpRules(response.data.data || []);
       } catch (error) {
         console.error('Failed to fetch IP rules:', error);
       } finally {
@@ -179,6 +170,41 @@ const IpRules: React.FC = () => {
     rule.reason.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const fetchIpRules = async () => {
+    try {
+      const response = await apiClient.get('/ip-rules');
+      setIpRules(response.data.data || []);
+    } catch (error) {
+      console.error('Failed to fetch IP rules:', error);
+    }
+  };
+
+  const handleCreate = () => {
+    setEditingRule(null);
+    setModalMode('create');
+    setIsModalOpen(true);
+  };
+
+  const handleEdit = (rule: IpRule) => {
+    setEditingRule(rule);
+    setModalMode('edit');
+    setIsModalOpen(true);
+  };
+
+  const handleSubmit = async (data: any) => {
+    try {
+      if (modalMode === 'create') {
+        await apiClient.post('/ip-rules', data);
+      } else if (editingRule) {
+        await apiClient.put(`/ip-rules/${editingRule._id}`, data);
+      }
+      await fetchIpRules();
+      setIsModalOpen(false);
+    } catch (error: any) {
+      throw error;
+    }
+  };
+
   const handleDelete = async (ruleId: string) => {
     if (window.confirm('Are you sure you want to delete this IP rule?')) {
       try {
@@ -186,6 +212,7 @@ const IpRules: React.FC = () => {
         setIpRules(ipRules.filter(rule => rule._id !== ruleId));
       } catch (error) {
         console.error('Failed to delete IP rule:', error);
+        alert('Failed to delete IP rule');
       }
     }
   };
@@ -198,21 +225,25 @@ const IpRules: React.FC = () => {
     <IpRulesContainer>
       <PageHeader>
         <PageTitle>IP Rules</PageTitle>
-        <AddButton>
+        <AddButton onClick={handleCreate}>
           <PlusIcon />
           Add IP Rule
         </AddButton>
       </PageHeader>
 
-      <SearchBar>
-        <SearchInput
-          type="text"
-          placeholder="Search IP rules..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-        <SearchIcon />
-      </SearchBar>
+      <IpRuleModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSubmit={handleSubmit}
+        initialData={editingRule || undefined}
+        mode={modalMode}
+      />
+
+      <SearchBar
+        value={searchTerm}
+        onChange={setSearchTerm}
+        placeholder="Search IP rules..."
+      />
 
       <IpRulesTable>
         <TableHeader>
@@ -224,28 +255,36 @@ const IpRules: React.FC = () => {
           <div>Actions</div>
         </TableHeader>
 
-        {filteredIpRules.map((rule) => (
-          <TableRow key={rule._id}>
-            <TypeBadge type={rule.type}>
-              {rule.type}
-            </TypeBadge>
-            <div>{rule.ips.join(', ')}</div>
-            <div>{rule.reason}</div>
-            <div>{rule.active ? 'Active' : 'Inactive'}</div>
-            <div>{new Date(rule.createdAt).toLocaleDateString()}</div>
-            <ActionButtons>
-              <ActionButton title="Edit">
-                <EditIcon />
-              </ActionButton>
-              <DeleteButton 
-                title="Delete"
-                onClick={() => handleDelete(rule._id)}
-              >
-                <DeleteIcon />
-              </DeleteButton>
-            </ActionButtons>
-          </TableRow>
-        ))}
+        {filteredIpRules.length === 0 ? (
+          <EmptyState>
+            {searchTerm
+              ? 'No IP rules found matching your search.'
+              : 'No IP rules yet. Click "Add IP Rule" to create one.'}
+          </EmptyState>
+        ) : (
+          filteredIpRules.map((rule) => (
+            <TableRow key={rule._id}>
+              <TypeBadge type={rule.type}>
+                {rule.type}
+              </TypeBadge>
+              <div>{rule.ips.join(', ')}</div>
+              <div>{rule.reason}</div>
+              <div>{rule.active ? 'Active' : 'Inactive'}</div>
+              <div>{new Date(rule.createdAt).toLocaleDateString()}</div>
+              <ActionButtons>
+                <ActionButton title="Edit" onClick={() => handleEdit(rule)}>
+                  <EditIcon />
+                </ActionButton>
+                <DeleteButton 
+                  title="Delete"
+                  onClick={() => handleDelete(rule._id)}
+                >
+                  <DeleteIcon />
+                </DeleteButton>
+              </ActionButtons>
+            </TableRow>
+          ))
+        )}
       </IpRulesTable>
     </IpRulesContainer>
   );

@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { PlusIcon, DeleteIcon, SearchIcon, RefreshIcon } from '../components/icons';
+import { PlusIcon, DeleteIcon, RefreshIcon } from '../components/icons';
 import { apiClient } from '../services/api';
+import SearchBar from '../components/SearchBar';
+import ApiKeyModal from '../components/ApiKeyModal';
 
 const ApiKeysContainer = styled.div`
   display: flex;
@@ -44,27 +46,6 @@ const AddButton = styled.button`
   svg {
     width: 16px;
     height: 16px;
-  }
-`;
-
-const SearchBar = styled.div`
-  display: flex;
-  align-items: center;
-  gap: ${({ theme }) => theme.spacing.md};
-  margin-bottom: ${({ theme }) => theme.spacing.lg};
-`;
-
-const SearchInput = styled.input`
-  flex: 1;
-  padding: ${({ theme }) => theme.spacing.md};
-  border: 1px solid ${({ theme }) => theme.colors.border};
-  border-radius: ${({ theme }) => theme.borderRadius.md};
-  font-size: ${({ theme }) => theme.fontSize.sm};
-  background: ${({ theme }) => theme.colors.surface};
-
-  &:focus {
-    outline: none;
-    border-color: ${({ theme }) => theme.colors.primary};
   }
 `;
 
@@ -152,41 +133,103 @@ const DeleteButton = styled(ActionButton)`
   }
 `;
 
+const EmptyState = styled.div`
+  padding: ${({ theme }) => theme.spacing.xxl};
+  text-align: center;
+  color: ${({ theme }) => theme.colors.textSecondary};
+  font-size: ${({ theme }) => theme.fontSize.sm};
+`;
+
 interface ApiKey {
   _id: string;
-  key: string;
+  keyPrefix: string;
+  name?: string;
   consumer: {
-    _id: string;
-    username: string;
+    consumerId: string;
+    name?: string;
+    email?: string;
   };
   active: boolean;
   createdAt: string;
+  expiresAt?: string;
+}
+
+interface ConsumerOption {
+  _id: string;
+  name: string;
+  email?: string;
 }
 
 const ApiKeys: React.FC = () => {
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [consumers, setConsumers] = useState<ConsumerOption[]>([]);
 
   useEffect(() => {
-    const fetchApiKeys = async () => {
+    const init = async () => {
       try {
-        const response = await apiClient.get('/api-keys');
-        setApiKeys(response.data);
-      } catch (error) {
-        console.error('Failed to fetch API keys:', error);
+        await Promise.all([fetchApiKeys(), fetchConsumers()]);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchApiKeys();
+    init();
   }, []);
 
+  const fetchApiKeys = async () => {
+    try {
+      const response = await apiClient.get('/api-keys');
+      setApiKeys(response.data.data || []);
+    } catch (error) {
+      console.error('Failed to fetch API keys:', error);
+    }
+  };
+
+  const fetchConsumers = async () => {
+    try {
+      const response = await apiClient.get('/consumers');
+      const options: ConsumerOption[] = (response.data.data || []).map((consumer: any) => ({
+        _id: consumer._id,
+        name: consumer.name,
+        email: consumer.email,
+      }));
+      setConsumers(options);
+    } catch (error) {
+      console.error('Failed to fetch consumers:', error);
+    }
+  };
+
   const filteredApiKeys = apiKeys.filter(apiKey =>
-    apiKey.key.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    apiKey.consumer.username.toLowerCase().includes(searchTerm.toLowerCase())
+    (apiKey.name && apiKey.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    apiKey.keyPrefix.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (apiKey.consumer.name && apiKey.consumer.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (apiKey.consumer.email && apiKey.consumer.email.toLowerCase().includes(searchTerm.toLowerCase()))
   );
+
+  const handleCreate = () => {
+    setIsModalOpen(true);
+  };
+
+  const handleGenerate = async (payload: {
+    consumerId: string;
+    name?: string;
+    rateLimit?: {
+      requests: number;
+      window: string;
+    };
+    expiresAt?: string | null;
+  }) => {
+    try {
+      const response = await apiClient.post('/api-keys', payload);
+      await fetchApiKeys();
+      return response.data?.data?.key;
+    } catch (error: any) {
+      throw error;
+    }
+  };
 
   const handleDelete = async (apiKeyId: string) => {
     if (window.confirm('Are you sure you want to delete this API key?')) {
@@ -220,21 +263,24 @@ const ApiKeys: React.FC = () => {
     <ApiKeysContainer>
       <PageHeader>
         <PageTitle>API Keys</PageTitle>
-        <AddButton>
+        <AddButton onClick={handleCreate}>
           <PlusIcon />
           Generate API Key
         </AddButton>
       </PageHeader>
 
-      <SearchBar>
-        <SearchInput
-          type="text"
-          placeholder="Search API keys..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-        <SearchIcon />
-      </SearchBar>
+      <ApiKeyModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSubmit={handleGenerate}
+        consumers={consumers}
+      />
+
+      <SearchBar
+        value={searchTerm}
+        onChange={setSearchTerm}
+        placeholder="Search API keys..."
+      />
 
       <ApiKeysTable>
         <TableHeader>
@@ -245,30 +291,44 @@ const ApiKeys: React.FC = () => {
           <div>Actions</div>
         </TableHeader>
 
-        {filteredApiKeys.map((apiKey) => (
-          <TableRow key={apiKey._id}>
-            <ApiKeyValue>{apiKey.key}</ApiKeyValue>
-            <div>{apiKey.consumer.username}</div>
-            <StatusBadge active={apiKey.active}>
-              {apiKey.active ? 'Active' : 'Revoked'}
-            </StatusBadge>
-            <div>{new Date(apiKey.createdAt).toLocaleDateString()}</div>
-            <ActionButtons>
-              <ActionButton 
-                title="Revoke"
-                onClick={() => handleRevoke(apiKey._id)}
-              >
-                <RefreshIcon />
-              </ActionButton>
-              <DeleteButton 
-                title="Delete"
-                onClick={() => handleDelete(apiKey._id)}
-              >
-                <DeleteIcon />
-              </DeleteButton>
-            </ActionButtons>
-          </TableRow>
-        ))}
+        {filteredApiKeys.length === 0 ? (
+          <EmptyState>
+            {searchTerm
+              ? 'No API keys found matching your search.'
+              : 'No API keys yet. Click "Generate API Key" to create one.'}
+          </EmptyState>
+        ) : (
+          filteredApiKeys.map((apiKey) => (
+            <TableRow key={apiKey._id}>
+              <ApiKeyValue>
+                {apiKey.name ? `${apiKey.name} · ` : ''}
+                {apiKey.keyPrefix ? `${apiKey.keyPrefix}••••` : 'Key hidden'}
+              </ApiKeyValue>
+              <div>
+                {apiKey.consumer.name || 'Unknown'}
+                {apiKey.consumer.email ? ` (${apiKey.consumer.email})` : ''}
+              </div>
+              <StatusBadge active={apiKey.active}>
+                {apiKey.active ? 'Active' : 'Revoked'}
+              </StatusBadge>
+              <div>{new Date(apiKey.createdAt).toLocaleDateString()}</div>
+              <ActionButtons>
+                <ActionButton 
+                  title="Revoke"
+                  onClick={() => handleRevoke(apiKey._id)}
+                >
+                  <RefreshIcon />
+                </ActionButton>
+                <DeleteButton 
+                  title="Delete"
+                  onClick={() => handleDelete(apiKey._id)}
+                >
+                  <DeleteIcon />
+                </DeleteButton>
+              </ActionButtons>
+            </TableRow>
+          ))
+        )}
       </ApiKeysTable>
     </ApiKeysContainer>
   );

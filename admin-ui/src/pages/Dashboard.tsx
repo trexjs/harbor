@@ -133,14 +133,15 @@ const Dashboard: React.FC = () => {
           apiClient.get('/logs?limit=1000'),
         ]);
 
-        const blockedCount = logs.data.filter((log: any) => 
+        const logsData = logs.data.data || [];
+        const blockedCount = logsData.filter((log: any) => 
           log.ipBlocked || log.geoBlocked || log.terminated
         ).length;
 
         setStats({
-          totalRoutes: routes.data.length,
-          totalConsumers: consumers.data.length,
-          totalApiKeys: apiKeys.data.length,
+          totalRoutes: routes.data.data?.length || 0,
+          totalConsumers: consumers.data.data?.length || 0,
+          totalApiKeys: apiKeys.data.data?.length || 0,
           blockedRequests: blockedCount,
           routesChange: 5, // Mock data
           consumersChange: 12,

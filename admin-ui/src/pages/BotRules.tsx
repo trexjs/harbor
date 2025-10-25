@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { PlusIcon, EditIcon, DeleteIcon, SearchIcon } from '../components/icons';
+import { PlusIcon, EditIcon, DeleteIcon } from '../components/icons';
 import { apiClient } from '../services/api';
+import SearchBar from '../components/SearchBar';
+import BotRuleModal from '../components/BotRuleModal';
 
 const BotRulesContainer = styled.div`
   display: flex;
@@ -47,27 +49,6 @@ const AddButton = styled.button`
   }
 `;
 
-const SearchBar = styled.div`
-  display: flex;
-  align-items: center;
-  gap: ${({ theme }) => theme.spacing.md};
-  margin-bottom: ${({ theme }) => theme.spacing.lg};
-`;
-
-const SearchInput = styled.input`
-  flex: 1;
-  padding: ${({ theme }) => theme.spacing.md};
-  border: 1px solid ${({ theme }) => theme.colors.border};
-  border-radius: ${({ theme }) => theme.borderRadius.md};
-  font-size: ${({ theme }) => theme.fontSize.sm};
-  background: ${({ theme }) => theme.colors.surface};
-
-  &:focus {
-    outline: none;
-    border-color: ${({ theme }) => theme.colors.primary};
-  }
-`;
-
 const BotRulesTable = styled.div`
   background: ${({ theme }) => theme.colors.surface};
   border: 1px solid ${({ theme }) => theme.colors.border};
@@ -77,7 +58,7 @@ const BotRulesTable = styled.div`
 
 const TableHeader = styled.div`
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr 1fr auto;
+  grid-template-columns: 1.2fr 1fr 1fr 1fr 1fr auto;
   gap: ${({ theme }) => theme.spacing.md};
   padding: ${({ theme }) => theme.spacing.lg};
   background: ${({ theme }) => theme.colors.borderLight};
@@ -88,7 +69,7 @@ const TableHeader = styled.div`
 
 const TableRow = styled.div`
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr 1fr auto;
+  grid-template-columns: 1.2fr 1fr 1fr 1fr 1fr auto;
   gap: ${({ theme }) => theme.spacing.md};
   padding: ${({ theme }) => theme.spacing.lg};
   border-bottom: 1px solid ${({ theme }) => theme.colors.border};
@@ -159,8 +140,20 @@ const DeleteButton = styled(ActionButton)`
   }
 `;
 
+const EmptyState = styled.div`
+  padding: ${({ theme }) => theme.spacing.xxl};
+  text-align: center;
+  color: ${({ theme }) => theme.colors.textSecondary};
+  font-size: ${({ theme }) => theme.fontSize.sm};
+`;
+
 interface BotRule {
   _id: string;
+  routeId: {
+    _id: string;
+    name: string;
+    path: string;
+  } | string;
   enabled: boolean;
   sensitivity: 'low' | 'medium' | 'high';
   patterns: Array<{
@@ -168,35 +161,91 @@ interface BotRule {
     pattern: string;
     action: string;
   }>;
+  whitelist?: string[];
+  rateLimitThreshold?: number;
   active: boolean;
   createdAt: string;
+}
+
+interface RouteOption {
+  _id: string;
+  name: string;
+  path: string;
 }
 
 const BotRules: React.FC = () => {
   const [botRules, setBotRules] = useState<BotRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingRule, setEditingRule] = useState<BotRule | null>(null);
+  const [routes, setRoutes] = useState<RouteOption[]>([]);
 
   useEffect(() => {
-    const fetchBotRules = async () => {
+    const init = async () => {
       try {
-        const response = await apiClient.get('/bot-rules');
-        setBotRules(response.data);
-      } catch (error) {
-        console.error('Failed to fetch bot rules:', error);
+        await Promise.all([fetchBotRules(), fetchRoutes()]);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchBotRules();
+    init();
   }, []);
+
+  const fetchBotRules = async () => {
+    try {
+      const response = await apiClient.get('/bot-rules');
+      setBotRules(response.data.data || []);
+    } catch (error) {
+      console.error('Failed to fetch bot rules:', error);
+    }
+  };
+
+  const fetchRoutes = async () => {
+    try {
+      const response = await apiClient.get('/routes');
+      const data = response.data?.data || [];
+      const options: RouteOption[] = data.map((route: any) => ({
+        _id: route._id,
+        name: route.name,
+        path: route.path,
+      }));
+      setRoutes(options);
+    } catch (error) {
+      console.error('Failed to fetch routes:', error);
+    }
+  };
 
   const filteredBotRules = botRules.filter(rule =>
     rule.patterns.some(pattern => 
       pattern.pattern.toLowerCase().includes(searchTerm.toLowerCase())
     )
   );
+
+  const handleCreate = () => {
+    setEditingRule(null);
+    setIsModalOpen(true);
+  };
+
+  const handleEdit = (rule: BotRule) => {
+    setEditingRule(rule);
+    setIsModalOpen(true);
+  };
+
+  const handleSubmit = async (data: any) => {
+    try {
+      if (editingRule) {
+        await apiClient.put(`/bot-rules/${editingRule._id}`, data);
+      } else {
+        await apiClient.post('/bot-rules', data);
+      }
+      await fetchBotRules();
+      setIsModalOpen(false);
+    } catch (error: any) {
+      throw error;
+    }
+  };
 
   const handleDelete = async (ruleId: string) => {
     if (window.confirm('Are you sure you want to delete this bot rule?')) {
@@ -217,24 +266,41 @@ const BotRules: React.FC = () => {
     <BotRulesContainer>
       <PageHeader>
         <PageTitle>Bot Rules</PageTitle>
-        <AddButton>
+        <AddButton onClick={handleCreate}>
           <PlusIcon />
           Add Bot Rule
         </AddButton>
       </PageHeader>
 
-      <SearchBar>
-        <SearchInput
-          type="text"
-          placeholder="Search bot rules..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-        <SearchIcon />
-      </SearchBar>
+      <BotRuleModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSubmit={handleSubmit}
+        initialData={editingRule ? {
+          routeId: typeof editingRule.routeId === 'string' ? editingRule.routeId : editingRule.routeId._id,
+          enabled: editingRule.enabled,
+          sensitivity: editingRule.sensitivity,
+          patterns: editingRule.patterns.map(pattern => ({
+            type: (pattern.type as 'user-agent' | 'request-pattern' | 'behavior') ?? 'user-agent',
+            pattern: pattern.pattern,
+            action: (pattern.action as 'allow' | 'block' | 'challenge') ?? 'block',
+          })),
+          whitelist: editingRule.whitelist ? editingRule.whitelist.join(', ') : '',
+          rateLimitThreshold: editingRule.rateLimitThreshold ?? 100,
+          active: editingRule.active,
+        } : undefined}
+        routes={routes}
+      />
+
+      <SearchBar
+        value={searchTerm}
+        onChange={setSearchTerm}
+        placeholder="Search bot rules..."
+      />
 
       <BotRulesTable>
         <TableHeader>
+          <div>Route</div>
           <div>Enabled</div>
           <div>Sensitivity</div>
           <div>Patterns</div>
@@ -243,28 +309,41 @@ const BotRules: React.FC = () => {
           <div>Actions</div>
         </TableHeader>
 
-        {filteredBotRules.map((rule) => (
-          <TableRow key={rule._id}>
-            <div>{rule.enabled ? 'Yes' : 'No'}</div>
-            <SensitivityBadge sensitivity={rule.sensitivity}>
-              {rule.sensitivity}
-            </SensitivityBadge>
-            <div>{rule.patterns.length} pattern(s)</div>
-            <div>{rule.active ? 'Active' : 'Inactive'}</div>
-            <div>{new Date(rule.createdAt).toLocaleDateString()}</div>
-            <ActionButtons>
-              <ActionButton title="Edit">
-                <EditIcon />
-              </ActionButton>
-              <DeleteButton 
-                title="Delete"
-                onClick={() => handleDelete(rule._id)}
-              >
-                <DeleteIcon />
-              </DeleteButton>
-            </ActionButtons>
-          </TableRow>
-        ))}
+        {filteredBotRules.length === 0 ? (
+          <EmptyState>
+            {searchTerm
+              ? 'No bot rules found matching your search.'
+              : 'No bot rules yet. Click "Add Bot Rule" to create one.'}
+          </EmptyState>
+        ) : (
+          filteredBotRules.map((rule) => (
+            <TableRow key={rule._id}>
+              <div>
+                {typeof rule.routeId === 'string'
+                  ? routes.find(route => route._id === rule.routeId)?.name || '—'
+                  : rule.routeId?.name || '—'}
+              </div>
+              <div>{rule.enabled ? 'Yes' : 'No'}</div>
+              <SensitivityBadge sensitivity={rule.sensitivity}>
+                {rule.sensitivity}
+              </SensitivityBadge>
+              <div>{rule.patterns.length} pattern(s)</div>
+              <div>{rule.active ? 'Active' : 'Inactive'}</div>
+              <div>{new Date(rule.createdAt).toLocaleDateString()}</div>
+              <ActionButtons>
+                <ActionButton title="Edit" onClick={() => handleEdit(rule)}>
+                  <EditIcon />
+                </ActionButton>
+                <DeleteButton 
+                  title="Delete"
+                  onClick={() => handleDelete(rule._id)}
+                >
+                  <DeleteIcon />
+                </DeleteButton>
+              </ActionButtons>
+            </TableRow>
+          ))
+        )}
       </BotRulesTable>
     </BotRulesContainer>
   );

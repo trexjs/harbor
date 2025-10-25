@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { PlusIcon, EditIcon, DeleteIcon, SearchIcon } from '../components/icons';
+import { PlusIcon, EditIcon, DeleteIcon } from '../components/icons';
 import { apiClient } from '../services/api';
+import SearchBar from '../components/SearchBar';
+import GeoRuleModal from '../components/GeoRuleModal';
 
 const GeoRulesContainer = styled.div`
   display: flex;
@@ -47,27 +49,6 @@ const AddButton = styled.button`
   }
 `;
 
-const SearchBar = styled.div`
-  display: flex;
-  align-items: center;
-  gap: ${({ theme }) => theme.spacing.md};
-  margin-bottom: ${({ theme }) => theme.spacing.lg};
-`;
-
-const SearchInput = styled.input`
-  flex: 1;
-  padding: ${({ theme }) => theme.spacing.md};
-  border: 1px solid ${({ theme }) => theme.colors.border};
-  border-radius: ${({ theme }) => theme.borderRadius.md};
-  font-size: ${({ theme }) => theme.fontSize.sm};
-  background: ${({ theme }) => theme.colors.surface};
-
-  &:focus {
-    outline: none;
-    border-color: ${({ theme }) => theme.colors.primary};
-  }
-`;
-
 const GeoRulesTable = styled.div`
   background: ${({ theme }) => theme.colors.surface};
   border: 1px solid ${({ theme }) => theme.colors.border};
@@ -77,7 +58,7 @@ const GeoRulesTable = styled.div`
 
 const TableHeader = styled.div`
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr 1fr auto;
+  grid-template-columns: 1.2fr 1fr 1fr 1fr 1fr auto;
   gap: ${({ theme }) => theme.spacing.md};
   padding: ${({ theme }) => theme.spacing.lg};
   background: ${({ theme }) => theme.colors.borderLight};
@@ -88,7 +69,7 @@ const TableHeader = styled.div`
 
 const TableRow = styled.div`
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr 1fr auto;
+  grid-template-columns: 1.2fr 1fr 1fr 1fr 1fr auto;
   gap: ${({ theme }) => theme.spacing.md};
   padding: ${({ theme }) => theme.spacing.lg};
   border-bottom: 1px solid ${({ theme }) => theme.colors.border};
@@ -159,8 +140,22 @@ const DeleteButton = styled(ActionButton)`
   }
 `;
 
+const EmptyState = styled.div`
+  padding: ${({ theme }) => theme.spacing.xxl};
+  text-align: center;
+  color: ${({ theme }) => theme.colors.textSecondary};
+  font-size: ${({ theme }) => theme.fontSize.sm};
+`;
+
+interface RouteOption {
+  _id: string;
+  name: string;
+  path: string;
+}
+
 interface GeoRule {
   _id: string;
+  routeId: RouteOption | string;
   action: 'block' | 'allow' | 'rate-limit';
   countries: string[];
   type: 'blacklist' | 'whitelist';
@@ -172,25 +167,76 @@ const GeoRules: React.FC = () => {
   const [geoRules, setGeoRules] = useState<GeoRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingRule, setEditingRule] = useState<GeoRule | null>(null);
+  const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
+  const [routes, setRoutes] = useState<RouteOption[]>([]);
 
   useEffect(() => {
-    const fetchGeoRules = async () => {
+    const loadData = async () => {
       try {
-        const response = await apiClient.get('/geo-rules');
-        setGeoRules(response.data);
-      } catch (error) {
-        console.error('Failed to fetch geo rules:', error);
+        await Promise.all([fetchGeoRules(), fetchRoutes()]);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchGeoRules();
+    loadData();
   }, []);
 
   const filteredGeoRules = geoRules.filter(rule =>
     rule.countries.some(country => country.toLowerCase().includes(searchTerm.toLowerCase()))
   );
+
+  const fetchGeoRules = async () => {
+    try {
+      const response = await apiClient.get('/geo-rules');
+      setGeoRules(response.data.data || []);
+    } catch (error) {
+      console.error('Failed to fetch geo rules:', error);
+    }
+  };
+
+  const fetchRoutes = async () => {
+    try {
+      const response = await apiClient.get('/routes');
+      const data = response.data?.data || [];
+      const routeOptions: RouteOption[] = data.map((route: any) => ({
+        _id: route._id,
+        name: route.name,
+        path: route.path,
+      }));
+      setRoutes(routeOptions);
+    } catch (error) {
+      console.error('Failed to fetch routes:', error);
+    }
+  };
+
+  const handleCreate = () => {
+    setEditingRule(null);
+    setModalMode('create');
+    setIsModalOpen(true);
+  };
+
+  const handleEdit = (rule: GeoRule) => {
+    setEditingRule(rule);
+    setModalMode('edit');
+    setIsModalOpen(true);
+  };
+
+  const handleSubmit = async (data: any) => {
+    try {
+      if (modalMode === 'create') {
+        await apiClient.post('/geo-rules', data);
+      } else if (editingRule) {
+        await apiClient.put(`/geo-rules/${editingRule._id}`, data);
+      }
+      await fetchGeoRules();
+      setIsModalOpen(false);
+    } catch (error: any) {
+      throw error;
+    }
+  };
 
   const handleDelete = async (ruleId: string) => {
     if (window.confirm('Are you sure you want to delete this geo rule?')) {
@@ -199,6 +245,7 @@ const GeoRules: React.FC = () => {
         setGeoRules(geoRules.filter(rule => rule._id !== ruleId));
       } catch (error) {
         console.error('Failed to delete geo rule:', error);
+        alert('Failed to delete geo rule');
       }
     }
   };
@@ -211,24 +258,36 @@ const GeoRules: React.FC = () => {
     <GeoRulesContainer>
       <PageHeader>
         <PageTitle>Geo Rules</PageTitle>
-        <AddButton>
+        <AddButton onClick={handleCreate}>
           <PlusIcon />
           Add Geo Rule
         </AddButton>
       </PageHeader>
 
-      <SearchBar>
-        <SearchInput
-          type="text"
-          placeholder="Search geo rules..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-        <SearchIcon />
-      </SearchBar>
+      <GeoRuleModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSubmit={handleSubmit}
+        initialData={editingRule ? {
+          routeId: typeof editingRule.routeId === 'string' ? editingRule.routeId : editingRule.routeId?._id || '',
+          action: editingRule.action,
+          countries: editingRule.countries,
+          type: editingRule.type,
+          active: editingRule.active,
+        } : undefined}
+        mode={modalMode}
+        routes={routes}
+      />
+
+      <SearchBar
+        value={searchTerm}
+        onChange={setSearchTerm}
+        placeholder="Search geo rules..."
+      />
 
       <GeoRulesTable>
         <TableHeader>
+          <div>Route</div>
           <div>Action</div>
           <div>Countries</div>
           <div>Type</div>
@@ -237,28 +296,41 @@ const GeoRules: React.FC = () => {
           <div>Actions</div>
         </TableHeader>
 
-        {filteredGeoRules.map((rule) => (
-          <TableRow key={rule._id}>
-            <ActionBadge action={rule.action}>
-              {rule.action}
-            </ActionBadge>
-            <div>{rule.countries.join(', ')}</div>
-            <div>{rule.type}</div>
-            <div>{rule.active ? 'Active' : 'Inactive'}</div>
-            <div>{new Date(rule.createdAt).toLocaleDateString()}</div>
-            <ActionButtons>
-              <ActionButton title="Edit">
-                <EditIcon />
-              </ActionButton>
-              <DeleteButton 
-                title="Delete"
-                onClick={() => handleDelete(rule._id)}
-              >
-                <DeleteIcon />
-              </DeleteButton>
-            </ActionButtons>
-          </TableRow>
-        ))}
+        {filteredGeoRules.length === 0 ? (
+          <EmptyState>
+            {searchTerm
+              ? 'No geo rules found matching your search.'
+              : 'No geo rules yet. Click "Add Geo Rule" to create one.'}
+          </EmptyState>
+        ) : (
+          filteredGeoRules.map((rule) => (
+            <TableRow key={rule._id}>
+              <div>
+                {typeof rule.routeId === 'string'
+                  ? routes.find(route => route._id === rule.routeId)?.name || '—'
+                  : `${rule.routeId?.name || '—'}${rule.routeId?.path ? ` (${rule.routeId.path})` : ''}`}
+              </div>
+              <ActionBadge action={rule.action}>
+                {rule.action}
+              </ActionBadge>
+              <div>{rule.countries.join(', ')}</div>
+              <div>{rule.type}</div>
+              <div>{rule.active ? 'Active' : 'Inactive'}</div>
+              <div>{new Date(rule.createdAt).toLocaleDateString()}</div>
+              <ActionButtons>
+                <ActionButton title="Edit" onClick={() => handleEdit(rule)}>
+                  <EditIcon />
+                </ActionButton>
+                <DeleteButton 
+                  title="Delete"
+                  onClick={() => handleDelete(rule._id)}
+                >
+                  <DeleteIcon />
+                </DeleteButton>
+              </ActionButtons>
+            </TableRow>
+          ))
+        )}
       </GeoRulesTable>
     </GeoRulesContainer>
   );

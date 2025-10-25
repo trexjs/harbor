@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from 'styled-components';
 import { theme } from './theme';
@@ -16,7 +16,29 @@ import Logs from './pages/Logs';
 import Login from './pages/Login';
 
 const App: React.FC = () => {
-  const isAuthenticated = !!localStorage.getItem('authToken');
+  const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('authToken'));
+
+  // Listen for storage changes to update auth state
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setIsAuthenticated(!!localStorage.getItem('authToken'));
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Also check on mount and when component updates
+    const interval = setInterval(() => {
+      const hasToken = !!localStorage.getItem('authToken');
+      if (hasToken !== isAuthenticated) {
+        setIsAuthenticated(hasToken);
+      }
+    }, 100);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
+  }, [isAuthenticated]);
 
   return (
     <ThemeProvider theme={theme}>

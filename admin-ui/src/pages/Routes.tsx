@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { PlusIcon, EditIcon, DeleteIcon, SearchIcon } from '../components/icons';
+import { PlusIcon, EditIcon, DeleteIcon, CheckIcon, CloseIcon } from '../components/icons';
 import { apiClient } from '../services/api';
+import SearchBar from '../components/SearchBar';
+import RouteModal from '../components/RouteModal';
 
 const RoutesContainer = styled.div`
   display: flex;
@@ -44,27 +46,6 @@ const AddButton = styled.button`
   svg {
     width: 16px;
     height: 16px;
-  }
-`;
-
-const SearchBar = styled.div`
-  display: flex;
-  align-items: center;
-  gap: ${({ theme }) => theme.spacing.md};
-  margin-bottom: ${({ theme }) => theme.spacing.lg};
-`;
-
-const SearchInput = styled.input`
-  flex: 1;
-  padding: ${({ theme }) => theme.spacing.md};
-  border: 1px solid ${({ theme }) => theme.colors.border};
-  border-radius: ${({ theme }) => theme.borderRadius.md};
-  font-size: ${({ theme }) => theme.fontSize.sm};
-  background: ${({ theme }) => theme.colors.surface};
-
-  &:focus {
-    outline: none;
-    border-color: ${({ theme }) => theme.colors.primary};
   }
 `;
 
@@ -156,6 +137,35 @@ const DeleteButton = styled(ActionButton)`
   }
 `;
 
+const EmptyState = styled.div`
+  padding: ${({ theme }) => theme.spacing.xxl};
+  text-align: center;
+  color: ${({ theme }) => theme.colors.textSecondary};
+  font-size: ${({ theme }) => theme.fontSize.sm};
+`;
+
+const ToggleButton = styled.button<{ active: boolean }>`
+  padding: ${({ theme }) => theme.spacing.sm};
+  border: 1px solid ${({ theme }) => theme.colors.border};
+  border-radius: ${({ theme }) => theme.borderRadius.sm};
+  background: ${({ active }) => active ? '#10B98120' : '#EF444420'};
+  color: ${({ active }) => active ? '#10B981' : '#EF4444'};
+  cursor: pointer;
+  transition: all ${({ theme }) => theme.transitions.normal};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &:hover {
+    opacity: 0.8;
+  }
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+`;
+
 interface Route {
   _id: string;
   name: string;
@@ -166,6 +176,18 @@ interface Route {
     weight: number;
   }>;
   active: boolean;
+  stripPath?: boolean;
+  preserveHost?: boolean;
+  requireAuth?: boolean;
+  timeout?: number;
+  loadBalancer?: {
+    algorithm: string;
+  };
+  rateLimit?: {
+    enabled: boolean;
+    maxRequests: number;
+    windowMs: number;
+  };
   createdAt: string;
 }
 
@@ -173,12 +195,15 @@ const Routes: React.FC = () => {
   const [routes, setRoutes] = useState<Route[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingRoute, setEditingRoute] = useState<Route | null>(null);
+  const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
 
   useEffect(() => {
     const fetchRoutes = async () => {
       try {
         const response = await apiClient.get('/routes');
-        setRoutes(response.data);
+        setRoutes(response.data.data || []);
       } catch (error) {
         console.error('Failed to fetch routes:', error);
       } finally {
@@ -194,6 +219,47 @@ const Routes: React.FC = () => {
     route.path.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const fetchRoutes = async () => {
+    try {
+      const response = await apiClient.get('/routes');
+      setRoutes(response.data.data || []);
+    } catch (error) {
+      console.error('Failed to fetch routes:', error);
+    }
+  };
+
+  const handleCreate = () => {
+    setEditingRoute(null);
+    setModalMode('create');
+    setIsModalOpen(true);
+  };
+
+  const handleEdit = async (routeId: string) => {
+    try {
+      const response = await apiClient.get(`/routes/${routeId}`);
+      setEditingRoute(response.data.data);
+      setModalMode('edit');
+      setIsModalOpen(true);
+    } catch (error) {
+      console.error('Failed to fetch route:', error);
+      alert('Failed to load route details');
+    }
+  };
+
+  const handleSubmit = async (data: any) => {
+    try {
+      if (modalMode === 'create') {
+        await apiClient.post('/routes', data);
+      } else if (editingRoute) {
+        await apiClient.put(`/routes/${editingRoute._id}`, data);
+      }
+      await fetchRoutes();
+      setIsModalOpen(false);
+    } catch (error: any) {
+      throw error;
+    }
+  };
+
   const handleDelete = async (routeId: string) => {
     if (window.confirm('Are you sure you want to delete this route?')) {
       try {
@@ -201,7 +267,20 @@ const Routes: React.FC = () => {
         setRoutes(routes.filter(route => route._id !== routeId));
       } catch (error) {
         console.error('Failed to delete route:', error);
+        alert('Failed to delete route');
       }
+    }
+  };
+
+  const handleToggleStatus = async (routeId: string, currentStatus: boolean) => {
+    try {
+      await apiClient.patch(`/routes/${routeId}/status`, { active: !currentStatus });
+      setRoutes(routes.map(route => 
+        route._id === routeId ? { ...route, active: !currentStatus } : route
+      ));
+    } catch (error) {
+      console.error('Failed to toggle route status:', error);
+      alert('Failed to update route status');
     }
   };
 
@@ -213,21 +292,25 @@ const Routes: React.FC = () => {
     <RoutesContainer>
       <PageHeader>
         <PageTitle>Routes</PageTitle>
-        <AddButton>
+        <AddButton onClick={handleCreate}>
           <PlusIcon />
           Add Route
         </AddButton>
       </PageHeader>
 
-      <SearchBar>
-        <SearchInput
-          type="text"
-          placeholder="Search routes..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-        <SearchIcon />
-      </SearchBar>
+      <RouteModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSubmit={handleSubmit}
+        initialData={editingRoute || undefined}
+        mode={modalMode}
+      />
+
+      <SearchBar
+        value={searchTerm}
+        onChange={setSearchTerm}
+        placeholder="Search routes..."
+      />
 
       <RoutesTable>
         <TableHeader>
@@ -239,7 +322,12 @@ const Routes: React.FC = () => {
           <div>Actions</div>
         </TableHeader>
 
-        {filteredRoutes.map((route) => (
+        {filteredRoutes.length === 0 ? (
+          <EmptyState>
+            {searchTerm ? 'No routes found matching your search.' : 'No routes yet. Click "Add Route" to create one.'}
+          </EmptyState>
+        ) : (
+          filteredRoutes.map((route) => (
           <TableRow key={route._id}>
             <RouteName>{route.name}</RouteName>
             <RoutePath>{route.path}</RoutePath>
@@ -249,7 +337,14 @@ const Routes: React.FC = () => {
               {route.active ? 'Active' : 'Inactive'}
             </StatusBadge>
             <ActionButtons>
-              <ActionButton title="Edit">
+              <ToggleButton
+                active={route.active}
+                title={route.active ? 'Deactivate' : 'Activate'}
+                onClick={() => handleToggleStatus(route._id, route.active)}
+              >
+                {route.active ? <CheckIcon /> : <CloseIcon />}
+              </ToggleButton>
+              <ActionButton title="Edit" onClick={() => handleEdit(route._id)}>
                 <EditIcon />
               </ActionButton>
               <DeleteButton 
@@ -260,7 +355,8 @@ const Routes: React.FC = () => {
               </DeleteButton>
             </ActionButtons>
           </TableRow>
-        ))}
+          ))
+        )}
       </RoutesTable>
     </RoutesContainer>
   );

@@ -51,8 +51,8 @@ const authenticateBasic = (req, res, next) => {
     req.user = {
       username,
       role: validCredentials.role,
+      userId: validCredentials.userId,
     };
-    req.userId = validCredentials.userId;
 
     logger.debug('Basic authentication successful', {
       username,

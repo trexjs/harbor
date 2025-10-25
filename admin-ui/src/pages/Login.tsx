@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import styled from 'styled-components';
-import { apiClient } from '../services/api';
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import styled from "styled-components";
+import { apiClient } from "../services/api";
 
 const LoginContainer = styled.div`
   min-height: 100vh;
@@ -90,35 +90,41 @@ const LoginButton = styled.button`
 
 const ErrorMessage = styled.div`
   padding: ${({ theme }) => theme.spacing.md};
-  background: #FEF2F2;
-  border: 1px solid #FECACA;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
   border-radius: ${({ theme }) => theme.borderRadius.md};
-  color: #DC2626;
+  color: #dc2626;
   font-size: ${({ theme }) => theme.fontSize.sm};
 `;
 
 const Login: React.FC = () => {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
+    setError("");
 
     try {
-      const response = await apiClient.post('/auth/login', {
-        username,
-        password,
+      // Encode credentials as Base64 for Basic Auth
+      const credentials = btoa(`${username}:${password}`);
+      
+      const response = await apiClient.post("/auth/login", {}, {
+        headers: {
+          'Authorization': `Basic ${credentials}`
+        }
       });
 
-      localStorage.setItem('authToken', response.data.data.token);
-      navigate('/');
+      localStorage.setItem("authToken", response.data.data.token);
+      // Trigger storage event for App.tsx to detect auth change
+      window.dispatchEvent(new Event('storage'));
+      navigate("/");
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Login failed');
+      setError(err.response?.data?.message || "Login failed");
     } finally {
       setLoading(false);
     }
@@ -156,11 +162,18 @@ const Login: React.FC = () => {
           </FormGroup>
 
           <LoginButton type="submit" disabled={loading}>
-            {loading ? 'Signing in...' : 'Sign in'}
+            {loading ? "Signing in..." : "Sign in"}
           </LoginButton>
         </Form>
 
-        <div style={{ marginTop: '24px', fontSize: '12px', color: '#6B7280', textAlign: 'center' }}>
+        <div
+          style={{
+            marginTop: "24px",
+            fontSize: "12px",
+            color: "#6B7280",
+            textAlign: "center",
+          }}
+        >
           <p>Demo credentials:</p>
           <p>Username: admin, Password: admin123</p>
           <p>Username: user, Password: user123</p>

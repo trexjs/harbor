@@ -13,6 +13,7 @@ export const theme = {
     surfaceDark: '#1e293b',
     text: '#0f172a',
     textSecondary: '#64748b',
+    textTertiary: '#cbd5e1',
     textLight: '#94a3b8',
     border: '#e2e8f0',
     borderLight: '#f1f5f9',
@@ -25,6 +26,7 @@ export const theme = {
     md: '1rem',
     lg: '1.5rem',
     xl: '2rem',
+    xxl: '2.5rem',
     '2xl': '3rem',
   },
   borderRadius: {
@@ -40,8 +42,13 @@ export const theme = {
     md: '1rem',
     lg: '1.125rem',
     xl: '1.25rem',
-    '2xl': '1.5rem',
+    xxl: '1.5rem',
+    '2xl': '1.75rem',
     '3xl': '1.875rem',
+  },
+  fontFamily: {
+    sans: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    mono: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
   },
   shadows: {
     sm: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
