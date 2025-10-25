@@ -12,6 +12,10 @@ interface AppContextType {
   setLoading: (loading: boolean) => void;
   error: string | null;
   setError: (error: string | null) => void;
+  hasProjects: boolean;
+  setHasProjects: (value: boolean) => void;
+  projectsInitialized: boolean;
+  setProjectsInitialized: (value: boolean) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -24,6 +28,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasProjects, setHasProjects] = useState(false);
+  const [projectsInitialized, setProjectsInitialized] = useState(false);
 
   return (
     <AppContext.Provider
@@ -38,6 +44,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         setLoading,
         error,
         setError,
+        hasProjects,
+        setHasProjects,
+        projectsInitialized,
+        setProjectsInitialized,
       }}
     >
       {children}

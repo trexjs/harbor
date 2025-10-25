@@ -13,6 +13,7 @@ const botRules = require("./botRules");
 const transformations = require("./transformations");
 const terminationRules = require("./terminationRules");
 const logs = require("./logs");
+const projects = require("./projects");
 
 // Public auth routes (no authentication required)
 // Debug logging for auth routes
@@ -32,5 +33,6 @@ router.use("/bot-rules", authenticateJWT, botRules);
 router.use("/transformations", authenticateJWT, transformations);
 router.use("/termination-rules", authenticateJWT, terminationRules);
 router.use("/logs", authenticateJWT, logs);
+router.use("/projects", authenticateJWT, projects);
 
 module.exports = router;

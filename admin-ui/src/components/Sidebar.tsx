@@ -11,8 +11,11 @@ import {
   BotIcon, 
   TransformIcon, 
   StopIcon, 
-  LogsIcon 
+  LogsIcon,
+  ProjectsIcon,
+  SettingsIcon,
 } from './icons';
+import { useApp } from '../context/AppContext';
 
 const SidebarContainer = styled.aside`
   position: fixed;
@@ -82,6 +85,7 @@ const NavItem = styled(NavLink)`
 `;
 
 const Sidebar: React.FC = () => {
+  const { hasProjects } = useApp();
   return (
     <SidebarContainer>
       <Logo>
@@ -89,65 +93,93 @@ const Sidebar: React.FC = () => {
       </Logo>
       
       <Nav>
-        <NavSection>
-          <SectionTitle>Overview</SectionTitle>
-          <NavItem to="/">
-            <DashboardIcon />
-            Dashboard
-          </NavItem>
-        </NavSection>
+        {hasProjects ? (
+          <>
+            <NavSection>
+              <SectionTitle>Overview</SectionTitle>
+              <NavItem to="/">
+                <DashboardIcon />
+                Dashboard
+              </NavItem>
+            </NavSection>
 
-        <NavSection>
-          <SectionTitle>Management</SectionTitle>
-          <NavItem to="/routes">
-            <RoutesIcon />
-            Routes
-          </NavItem>
-          <NavItem to="/consumers">
-            <UsersIcon />
-            Consumers
-          </NavItem>
-          <NavItem to="/api-keys">
-            <KeyIcon />
-            API Keys
-          </NavItem>
-        </NavSection>
+            <NavSection>
+              <SectionTitle>Management</SectionTitle>
+              <NavItem to="/projects">
+                <ProjectsIcon />
+                Projects
+              </NavItem>
+              <NavItem to="/routes">
+                <RoutesIcon />
+                Routes
+              </NavItem>
+              <NavItem to="/consumers">
+                <UsersIcon />
+                Consumers
+              </NavItem>
+              <NavItem to="/api-keys">
+                <KeyIcon />
+                API Keys
+              </NavItem>
+            </NavSection>
 
-        <NavSection>
-          <SectionTitle>Security</SectionTitle>
-          <NavItem to="/ip-rules">
-            <ShieldIcon />
-            IP Rules
-          </NavItem>
-          <NavItem to="/geo-rules">
-            <GlobeIcon />
-            Geo Rules
-          </NavItem>
-          <NavItem to="/bot-rules">
-            <BotIcon />
-            Bot Rules
-          </NavItem>
-        </NavSection>
+            <NavSection>
+              <SectionTitle>Security</SectionTitle>
+              <NavItem to="/ip-rules">
+                <ShieldIcon />
+                IP Rules
+              </NavItem>
+              <NavItem to="/geo-rules">
+                <GlobeIcon />
+                Geo Rules
+              </NavItem>
+              <NavItem to="/bot-rules">
+                <BotIcon />
+                Bot Rules
+              </NavItem>
+            </NavSection>
 
-        <NavSection>
-          <SectionTitle>Transformation</SectionTitle>
-          <NavItem to="/transformations">
-            <TransformIcon />
-            Transformations
-          </NavItem>
-          <NavItem to="/termination-rules">
-            <StopIcon />
-            Termination Rules
-          </NavItem>
-        </NavSection>
+            <NavSection>
+              <SectionTitle>Transformation</SectionTitle>
+              <NavItem to="/transformations">
+                <TransformIcon />
+                Transformations
+              </NavItem>
+              <NavItem to="/termination-rules">
+                <StopIcon />
+                Termination Rules
+              </NavItem>
+            </NavSection>
 
-        <NavSection>
-          <SectionTitle>Monitoring</SectionTitle>
-          <NavItem to="/logs">
-            <LogsIcon />
-            Logs
-          </NavItem>
-        </NavSection>
+            <NavSection>
+              <SectionTitle>Monitoring</SectionTitle>
+              <NavItem to="/logs">
+                <LogsIcon />
+                Logs
+              </NavItem>
+            </NavSection>
+
+            <NavSection>
+              <SectionTitle>Administration</SectionTitle>
+              <NavItem to="/settings">
+                <SettingsIcon />
+                Settings
+              </NavItem>
+            </NavSection>
+          </>
+        ) : (
+          <NavSection>
+            <SectionTitle>Getting Started</SectionTitle>
+            <NavItem to="/projects">
+              <ProjectsIcon />
+              Projects
+            </NavItem>
+            <NavItem to="/settings">
+              <SettingsIcon />
+              Settings
+            </NavItem>
+          </NavSection>
+        )}
       </Nav>
     </SidebarContainer>
   );

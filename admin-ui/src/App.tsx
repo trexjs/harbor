@@ -14,9 +14,14 @@ import Transformations from './pages/Transformations';
 import TerminationRules from './pages/TerminationRules';
 import Logs from './pages/Logs';
 import Login from './pages/Login';
+import Projects from './pages/Projects';
+import Settings from './pages/Settings';
+import { apiClient } from './services/api';
+import { useApp } from './context/AppContext';
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('authToken'));
+  const { hasProjects, setHasProjects, projectsInitialized, setProjectsInitialized } = useApp();
 
   // Listen for storage changes to update auth state
   useEffect(() => {
@@ -40,6 +45,26 @@ const App: React.FC = () => {
     };
   }, [isAuthenticated]);
 
+  useEffect(() => {
+    const initializeProjects = async () => {
+      if (!isAuthenticated || projectsInitialized) {
+        return;
+      }
+
+      try {
+        const response = await apiClient.get('/projects');
+        const data = response.data?.data || [];
+        setHasProjects(data.length > 0);
+      } catch (error) {
+        console.error('Failed to initialize projects:', error);
+      } finally {
+        setProjectsInitialized(true);
+      }
+    };
+
+    initializeProjects();
+  }, [isAuthenticated, projectsInitialized, setHasProjects, setProjectsInitialized]);
+
   return (
     <ThemeProvider theme={theme}>
       <Router>
@@ -51,17 +76,30 @@ const App: React.FC = () => {
               isAuthenticated ? (
                 <Layout>
                   <Routes>
-                    <Route path="/" element={<Dashboard />} />
-                    <Route path="/routes" element={<RoutesPage />} />
-                    <Route path="/consumers" element={<Consumers />} />
-                    <Route path="/api-keys" element={<ApiKeys />} />
-                    <Route path="/ip-rules" element={<IpRules />} />
-                    <Route path="/geo-rules" element={<GeoRules />} />
-                    <Route path="/bot-rules" element={<BotRules />} />
-                    <Route path="/transformations" element={<Transformations />} />
-                    <Route path="/termination-rules" element={<TerminationRules />} />
-                    <Route path="/logs" element={<Logs />} />
-                    <Route path="*" element={<Navigate to="/" replace />} />
+                    {hasProjects ? (
+                      <>
+                        <Route path="/" element={<Dashboard />} />
+                        <Route path="/routes" element={<RoutesPage />} />
+                        <Route path="/consumers" element={<Consumers />} />
+                        <Route path="/api-keys" element={<ApiKeys />} />
+                        <Route path="/ip-rules" element={<IpRules />} />
+                        <Route path="/geo-rules" element={<GeoRules />} />
+                        <Route path="/bot-rules" element={<BotRules />} />
+                        <Route path="/transformations" element={<Transformations />} />
+                        <Route path="/termination-rules" element={<TerminationRules />} />
+                        <Route path="/logs" element={<Logs />} />
+                        <Route path="/projects" element={<Projects />} />
+                        <Route path="/settings" element={<Settings />} />
+                        <Route path="*" element={<Navigate to="/" replace />} />
+                      </>
+                    ) : (
+                      <>
+                        <Route path="/" element={<Navigate to="/projects" replace />} />
+                        <Route path="/projects" element={<Projects />} />
+                        <Route path="/settings" element={<Settings />} />
+                        <Route path="*" element={<Navigate to="/projects" replace />} />
+                      </>
+                    )}
                   </Routes>
                 </Layout>
               ) : (
