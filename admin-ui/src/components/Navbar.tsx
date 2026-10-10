@@ -65,9 +65,35 @@ const LogoutButton = styled.button`
   }
 `;
 
+const LoginButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: ${({ theme }) => theme.spacing.sm};
+  padding: ${({ theme }) => theme.spacing.sm} ${({ theme }) => theme.spacing.md};
+  background: ${({ theme }) => theme.colors.primary};
+  color: white;
+  border: none;
+  border-radius: ${({ theme }) => theme.borderRadius.md};
+  font-size: ${({ theme }) => theme.fontSize.sm};
+  font-weight: 500;
+  cursor: pointer;
+  transition: all ${({ theme }) => theme.transitions.normal};
+
+  &:hover {
+    background: ${({ theme }) => theme.colors.primary}dd;
+    transform: translateY(-1px);
+  }
+`;
+
 const Navbar: React.FC = () => {
+  const isAuthenticated = !!localStorage.getItem('authToken');
+
   const handleLogout = () => {
     localStorage.removeItem('authToken');
+    window.location.href = '/login';
+  };
+
+  const handleLogin = () => {
     window.location.href = '/login';
   };
 
@@ -76,15 +102,22 @@ const Navbar: React.FC = () => {
       <NavbarTitle>API Gateway Admin</NavbarTitle>
       
       <UserSection>
-        <UserInfo>
-          <UserIcon />
-          <UserName>Admin User</UserName>
-        </UserInfo>
-        
-        <LogoutButton onClick={handleLogout}>
-          <LogoutIcon />
-          Logout
-        </LogoutButton>
+        {isAuthenticated ? (
+          <>
+            <UserInfo>
+              <UserIcon />
+              <UserName>Admin User</UserName>
+            </UserInfo>
+            <LogoutButton onClick={handleLogout}>
+              <LogoutIcon />
+              Logout
+            </LogoutButton>
+          </>
+        ) : (
+          <LoginButton onClick={handleLogin}>
+            Login
+          </LoginButton>
+        )}
       </UserSection>
     </NavbarContainer>
   );

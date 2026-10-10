@@ -17,9 +17,23 @@ const adminRoutes = require("./src/routes/admin");
 const app = express();
 
 // CORS configuration - must be before other middleware
+const corsOrigins = process.env.CORS_ORIGIN || "http://localhost:3000,http://localhost:5173";
+const allowedOrigins = corsOrigins
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 app.use(
   cors({
-    origin: "http://localhost:3000",
+    origin: (origin, callback) => {
+      const allowAll = allowedOrigins.includes("*");
+
+      if (!origin || allowAll || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      callback(new Error(`Origin ${origin} not allowed by CORS configuration`));
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
